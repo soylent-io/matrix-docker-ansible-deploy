@@ -8,14 +8,6 @@
     update_cache: no
   when: "matrix_ssl_retrieval_method == 'self-signed' and ansible_os_family == 'RedHat'"
 
-- name: Ensure APT usage dependencies are installed (Debian)
-  apt:
-    name:
-      - openssl
-    state: present
-    update_cache: no
-  when: "matrix_ssl_retrieval_method == 'self-signed' and ansible_os_family == 'Debian'"
-
 - name: Ensure OpenSSL installed (Archlinux)
   pacman:
     name:

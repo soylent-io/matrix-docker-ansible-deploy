@@ -52,7 +52,7 @@
   template:
     src: "{{ role_path }}/templates/usr-local-bin/matrix-ssl-lets-encrypt-certificates-renew.j2"
     dest: "{{ matrix_local_bin_path }}/matrix-ssl-lets-encrypt-certificates-renew"
-    mode: 0750
+    mode: 0755
   when: "matrix_ssl_retrieval_method == 'lets-encrypt'"
 
 - block:
@@ -102,14 +102,6 @@
     name: matrix-nginx-proxy-reload
     state: absent
   when: "not matrix_nginx_proxy_enabled|bool"
-
-- name: Ensure matrix-ssl-lets-encrypt-renew cronjob removed
-  cron:
-    user: root
-    cron_file: matrix-ssl-lets-encrypt
-    name: matrix-ssl-lets-encrypt-certificates-renew
-    state: absent
-  when: "matrix_ssl_retrieval_method != 'lets-encrypt'"
 
 - name: Ensure Let's Encrypt SSL renewal script removed
   file:

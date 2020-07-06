@@ -14,7 +14,7 @@
   file:
     path: "{{ item }}"
     state: directory
-    mode: 0750
+    mode: 0755
     owner: "{{ matrix_user_username }}"
     group: "{{ matrix_user_groupname }}"
   with_items:
@@ -48,14 +48,14 @@
 - name: Ensure Matrix nginx-proxy configuration for matrix domain exists
   template:
     src: "{{ role_path }}/templates/nginx/conf.d/matrix-synapse.conf.j2"
-    dest: "{{ matrix_nginx_proxy_confd_path }}/matrix-synapse.conf"
+    dest: "{{ matrix_nginx_proxy_confd_path }}/{{tenant}}-matrix-synapse.conf"
     mode: 0644
   when: matrix_nginx_proxy_proxy_matrix_enabled|bool
 
 - name: Ensure Matrix nginx-proxy configuration for riot domain exists
   template:
     src: "{{ role_path }}/templates/nginx/conf.d/matrix-riot-web.conf.j2"
-    dest: "{{ matrix_nginx_proxy_confd_path }}/matrix-riot-web.conf"
+    dest: "{{ matrix_nginx_proxy_confd_path }}/{{tenant}}-matrix-riot-web.conf"
     mode: 0644
   when: matrix_nginx_proxy_proxy_riot_enabled|bool
 
@@ -69,7 +69,7 @@
 - name: Ensure Matrix nginx-proxy configuration for jitsi domain exists
   template:
     src: "{{ role_path }}/templates/nginx/conf.d/matrix-jitsi.conf.j2"
-    dest: "{{ matrix_nginx_proxy_confd_path }}/matrix-jitsi.conf"
+    dest: "{{ matrix_nginx_proxy_confd_path }}/{{tenant}}-matrix-jitsi.conf"
     mode: 0644
   when: matrix_nginx_proxy_proxy_jitsi_enabled|bool
 
@@ -77,7 +77,7 @@
   file:
     path: "{{ matrix_nginx_proxy_data_path }}/matrix-domain"
     state: directory
-    mode: 0750
+    mode: 0755
     owner: "{{ matrix_user_username }}"
     group: "{{ matrix_user_groupname }}"
   when: matrix_nginx_proxy_base_domain_serving_enabled|bool
@@ -108,20 +108,6 @@
     force_source: "{{ matrix_nginx_proxy_docker_image_force_pull if ansible_version.major > 2 or ansible_version.minor >= 8 else omit }}"
     force: "{{ omit if ansible_version.major > 2 or ansible_version.minor >= 8 else matrix_nginx_proxy_docker_image_force_pull }}"
   when: matrix_nginx_proxy_enabled|bool
-
-- name: Ensure matrix-nginx-proxy.service installed
-  template:
-    src: "{{ role_path }}/templates/systemd/matrix-nginx-proxy.service.j2"
-    dest: "{{ matrix_systemd_path }}/matrix-nginx-proxy.service"
-    mode: 0644
-  register: matrix_nginx_proxy_systemd_service_result
-  when: matrix_nginx_proxy_enabled|bool
-
-- name: Ensure systemd reloaded after matrix-nginx-proxy.service installation
-  service:
-    daemon_reload: yes
-  when: "matrix_nginx_proxy_enabled and matrix_nginx_proxy_systemd_service_result.changed"
-
 
 #
 # Tasks related to getting rid of matrix-nginx-proxy (if it was previously enabled)

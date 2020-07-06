@@ -10,7 +10,7 @@
     url: "{{ matrix_synapse_ext_password_provider_rest_auth_download_url }}"
     dest: "{{ matrix_synapse_ext_path }}/rest_auth_provider.py"
     force: true
-    mode: 0440
+    mode: 0444
     owner: "{{ matrix_user_username }}"
     group: "{{ matrix_user_groupname }}"
 

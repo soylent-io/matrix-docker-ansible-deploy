@@ -1,0 +1,62 @@
+---
+- name: "Set up a Matrix server"
+  hosts: "{{ target if target is defined else 'matrix_servers' }}"
+  become: true
+
+  pre_tasks:
+    - postgresql_db:
+        name: "{{matrix_synapse_database_database}}"
+        template: template0
+        login_host: "{{db_admin.HOST}}"
+        login_user: "{{db_admin.USER}}"
+        login_password: "{{db_admin.PASSWORD}}"
+      tags:
+        - setup-all
+
+    - postgresql_user:
+        priv: ALL
+        db: "{{matrix_synapse_database_database}}"
+        user: "{{matrix_synapse_database_user}}"
+        password: "{{matrix_synapse_database_password}}"
+        login_host: "{{db_admin.HOST}}"
+        login_user: "{{db_admin.USER}}"
+        login_password: "{{db_admin.PASSWORD}}"
+      tags:
+        - setup-all
+
+  roles:
+    - matrix-base
+    - matrix-synapse
+    - matrix-riot-web
+    - matrix-coturn
+    - role: matrix-nginx-proxy
+      vars:
+        matrix_nginx_proxy_https_enabled: false
+        matrix_nginx_proxy_base_path: "/matrix/env/infra/nginx-proxy"
+        matrix_nginx_proxy_proxy_matrix_client_api_addr_with_container: "{{tenant}}_matrix-synapse:8008"
+        matrix_nginx_proxy_proxy_riot_client_api_addr_with_container: "{{tenant}}_matrix-riot-web:8080"
+    - role: matrix-nginx-proxy
+      vars:
+        matrix_nginx_proxy_https_enabled: true
+        matrix_nginx_proxy_base_path: "/matrix/env/infra/ssl/nginx-proxy"
+        matrix_ssl_config_dir_path: "/matrix/env/infra/ssl/config"
+        matrix_nginx_proxy_proxy_matrix_client_api_addr_with_container: "{{matrix_server_ip}}:8080"
+        matrix_nginx_proxy_proxy_riot_client_api_addr_with_container: "{{matrix_server_ip}}"
+    - matrix-common-after
+
+  post_tasks:
+    - file:
+        src: "{{in_certificates_paths}}/privkey.pem"
+        path: "/matrix/env/infra/ssl/config/live/{{matrix_domain}}/privkey.pem"
+        state: link
+        force: yes
+      tags:
+        - setup-all
+
+    - file:
+        src: "{{in_certificates_paths}}/fullchain.pem"
+        path: "/matrix/env/infra/ssl/config/live/{{matrix_domain}}/fullchain.pem"
+        state: link
+        force: yes
+      tags:
+        - setup-all

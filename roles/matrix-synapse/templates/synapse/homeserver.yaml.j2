@@ -36,7 +36,7 @@ pid_file: /homeserver.pid
 # use synapse with a reverse proxy, this should be the URL to reach
 # synapse via the proxy.
 #
-public_baseurl: https://{{ matrix_server_fqn_matrix }}/
+public_baseurl: https://{{ matrix_server_fqn_matrix }}:8443/
 
 # Set the soft limit on the number of file descriptors synapse can use
 # Zero is used to indicate synapse should set the soft limit to the
@@ -673,7 +673,7 @@ database:
 # A yaml python logging config file as described by
 # https://docs.python.org/3.7/library/logging.config.html#configuration-dictionary-schema
 #
-log_config: "/data/{{ matrix_server_fqn_matrix }}.log.config"
+log_config: "/data/log.config"
 
 
 ## Ratelimiting ##
@@ -1284,7 +1284,7 @@ form_secret: {{ matrix_synapse_form_secret|string|to_json }}
 
 # Path to the signing key to sign messages with
 #
-signing_key_path: "/data/{{ matrix_server_fqn_matrix }}.signing.key"
+signing_key_path: "/data/signing.key"
 
 # The keys that the server used to sign messages with but won't use
 # to sign new messages.
