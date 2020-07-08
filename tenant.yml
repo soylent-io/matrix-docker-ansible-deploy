@@ -41,7 +41,7 @@
         matrix_nginx_proxy_base_path: "/matrix/env/infra/ssl/nginx-proxy"
         matrix_ssl_config_dir_path: "/matrix/env/infra/ssl/config"
         matrix_nginx_proxy_proxy_matrix_client_api_addr_with_container: "{{matrix_server_ip}}:8080"
-        matrix_nginx_proxy_proxy_riot_client_api_addr_with_container: "{{matrix_server_ip}}"
+        matrix_nginx_proxy_proxy_riot_client_api_addr_with_container: "{{matrix_server_ip}}:8001"
     - matrix-common-after
 
   post_tasks:
