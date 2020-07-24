@@ -1,0 +1,9 @@
+---
+- name: "Set up a Matrix server"
+  hosts: "{{ target if target is defined else 'matrix_servers' }}"
+  become: true
+
+  roles:
+    - keycloak-realm
+    - role: keycloak-user
+      when: admin_user is defined and admin_user != ''

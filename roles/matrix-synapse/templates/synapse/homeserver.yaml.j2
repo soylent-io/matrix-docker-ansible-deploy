@@ -1382,6 +1382,9 @@ trusted_key_servers: {{ matrix_synapse_trusted_key_servers|to_json }}
 # https://<server>:<port>/_matrix/saml2/authn_response.
 #
 saml2_config:
+{% if matrix_synapse_saml %}
+  config_path: "/data/saml/sp_conf.py"
+{% endif %}
   # `sp_config` is the configuration for the pysaml2 Service Provider.
   # See pysaml2 docs for format of config.
   #

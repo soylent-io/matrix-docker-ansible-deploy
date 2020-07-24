@@ -1028,3 +1028,5 @@ matrix_synapse_turn_uris:
 matrix_jitsi_enabled: true
 matrix_jitsi_web_stun_servers:
 - stun:{{turn_server_ip}}:3478
+
+matrix_synapse_saml: true

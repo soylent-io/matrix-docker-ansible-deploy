@@ -1,0 +1,83 @@
+- set_fact:
+    keycloak_admin_user: "{{kc_admin}}"
+    keycloak_admin_pass: "{{kc_password}}"
+    keycloak_base_url: "{{kc_url}}"
+    keycloak_realm_name: "{{tenant}}"
+    realm_user: "{{admin_user}}"
+    realm_password: "{{admin_password}}"
+
+# KeyCloack configuration
+- name: "Create Token for service Keycloak"
+  uri:
+    url: "{{ keycloak_base_url }}/auth/realms/master/protocol/openid-connect/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      username: "{{ keycloak_admin_user }}"
+      password: "{{ keycloak_admin_pass }}"
+      grant_type: "password"
+      client_id: "admin-cli"
+  register: keycloak_token
+
+- name: "Find out, if User {{ realm_user }} for service Keycloak exists"
+  uri:
+    url: "{{ keycloak_base_url }}/auth/admin/realms/{{keycloak_realm_name}}/users/?email={{realm_user}}"
+    method: GET
+    status_code:
+     - 200
+    headers:
+      Accept: "application/json"
+      Authorization: "Bearer {{ keycloak_token.json.access_token }}"
+  register: keycloak_user_exists
+
+- name: "Create user {{ realm_user }} for service Keycloak"
+  when: keycloak_user_exists.json.0 is not defined
+  uri:
+    url: "{{ keycloak_base_url }}/auth/admin/realms/{{keycloak_realm_name}}/users/"
+    method: POST
+    body_format: json
+    body:
+      enabled: true
+      attributes: {}
+      username: "{{realm_user}}"
+      emailVerified: false
+      email: "{{realm_user}}"
+#      firstName: "First"
+#      lastName: "Last"
+    remote_src: "no"
+    status_code:
+     - 201
+    headers:
+      Content-type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ keycloak_token.json.access_token }}"
+  register: keycloak_user_create
+
+- name: "Find out, if User {{ realm_user }} for service Keycloak exists"
+  uri:
+    url: "{{ keycloak_base_url }}/auth/admin/realms/{{keycloak_realm_name}}/users/?email={{realm_user}}"
+    method: GET
+    status_code:
+     - 200
+    headers:
+      Accept: "application/json"
+      Authorization: "Bearer {{ keycloak_token.json.access_token }}"
+  register: keycloak_user_exists
+
+- name: "Update user password {{ realm_user }} for service Keycloak"
+  uri:
+    url: "{{ keycloak_base_url }}/auth/admin/realms/{{keycloak_realm_name}}/users/{{keycloak_user_exists.json.0.id}}/reset-password"
+    method: PUT
+    body_format: json
+    body:
+      type: "password"
+      value: "{{realm_password}}"
+      temporary: false
+    remote_src: "no"
+    status_code:
+     - 204
+    headers:
+      Content-type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ keycloak_token.json.access_token }}"
+  register: keycloak_user_create

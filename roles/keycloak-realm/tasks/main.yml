@@ -1,0 +1,389 @@
+- set_fact:
+    matrix_synapse_base_path: "{{ matrix_base_data_path }}/synapse"
+
+- set_fact:
+    matrix_synapse_config_dir_path: "{{ matrix_synapse_base_path }}/config"
+
+- set_fact:
+    matrix_ssl_certificate_cert_path: "{{ matrix_synapse_config_dir_path }}/saml/cert.pem"
+    matrix_ssl_certificate_cert_key_path: "{{ matrix_synapse_config_dir_path }}/saml/key.pem"
+    matrix_ssl_certificate_pfx: "{{ matrix_synapse_config_dir_path }}/saml/saml.pfx"
+
+- set_fact:
+    keycloak_admin_user: "{{kc_admin}}"
+    keycloak_admin_pass: "{{kc_password}}"
+    keycloak_base_url: "{{kc_url}}"
+    keycloak_realm_name: "{{tenant}}"
+    keycloak_client_id: "matrix"
+    tenant_domain: "{{matrix_domain}}"
+    realm_user: "admin@{{matrix_domain}}"
+    realm_password: "admin_password"
+    saml_signing_certificate: ""
+    saml_signing_private_key: ""
+
+# Matrix Synapse configuration
+- name: Ensure SAML configuration directories
+  file:
+    path: "{{ matrix_synapse_config_dir_path }}/{{ item }}"
+    state: directory
+    mode: 0755
+    owner: "{{ matrix_user_username }}"
+    group: "{{ matrix_user_groupname }}"
+  with_items:
+    - saml
+    - saml/saml2_attribute_maps
+
+- name: Ensure SAML maps config
+  with_items:
+    - saml2_attribute_maps/map.py
+    - sp_conf.py
+  template:
+    src: "{{ item }}"
+    dest: "{{ matrix_synapse_config_dir_path }}/saml/{{ item }}"
+    mode: 0644
+
+- name: Check if SSL certificate file exists
+  stat:
+    path: "{{ matrix_ssl_certificate_cert_path }}"
+  register: matrix_ssl_certificate_cert_path_stat_result
+
+- name: Generate SSL certificate
+  command: |
+    openssl req -x509 \
+    -sha256 \
+    -newkey rsa:2048 \
+    -nodes \
+    -subj "/CN={{ keycloak_client_id }}" \
+    -keyout {{ matrix_ssl_certificate_cert_key_path }} \
+    -out {{ matrix_ssl_certificate_cert_path }} \
+    -days 3650
+
+# export KEYSTORE_PW="example123"
+- name: Prepare SSL keys for import
+  command: |
+    openssl pkcs12 -export -out {{matrix_ssl_certificate_pfx}} \
+    -inkey {{ matrix_ssl_certificate_cert_key_path }} \
+    -in {{ matrix_ssl_certificate_cert_path }} -name matrix \
+    -password "pass:T8KsHvBFgAk"
+
+# KeyCloack configuration
+- name: "Create Token for service Keycloak"
+  uri:
+    url: "{{ keycloak_base_url }}/auth/realms/master/protocol/openid-connect/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      username: "{{ keycloak_admin_user }}"
+      password: "{{ keycloak_admin_pass }}"
+      grant_type: "password"
+      client_id: "admin-cli"
+  register: keycloak_token
+
+- name: "Find out, if Realm {{ keycloak_realm_name }} for service Keycloak exists"
+  uri:
+    url: "{{ keycloak_base_url }}/auth/admin/realms/{{ keycloak_realm_name }}"
+    method: GET
+    status_code:
+     - 200
+     - 404
+    headers:
+      Accept: "application/json"
+      Authorization: "Bearer {{ keycloak_token.json.access_token }}"
+  register: keycloak_realm_exists
+
+- name: "Create Realm {{ keycloak_realm_name }} for service Keycloak"
+  uri:
+    url: "{{ keycloak_base_url }}/auth/admin/realms"
+    method: POST
+    body_format: json
+    body:
+      enabled: true
+      id: "{{ keycloak_realm_name }}"
+      realm: "{{ keycloak_realm_name }}"
+      displayName: "{{ keycloak_realm_name }}"
+      displayNameHtml: '<div class="kc-logo-text"><span>{{ keycloak_realm_name }}</span></div>'
+    remote_src: "no"
+    status_code:
+     - 201
+    headers:
+      Content-type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ keycloak_token.json.access_token }}"
+  register: keycloak_realm_create
+  when: "keycloak_realm_exists.status == 404"
+
+- name: "Update Realm {{ keycloak_realm_name }} for service Keycloak"
+  uri:
+    url: "{{ keycloak_base_url }}/auth/admin/realms/{{ keycloak_realm_name }}"
+    method: PUT
+    body_format: json
+    body:
+      enabled: true
+      id: "{{ keycloak_realm_name }}"
+      realm: "{{ keycloak_realm_name }}"
+      displayName: "{{ keycloak_realm_name }}"
+      displayNameHtml: '<div class="kc-logo-text"><span>{{ keycloak_realm_name }}</span></div>'
+    remote_src: "no"
+    status_code:
+     - 204
+    headers:
+      Content-type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ keycloak_token.json.access_token }}"
+  register: keycloak_realm_create
+  when: "keycloak_realm_exists.status == 200"
+
+- name: "Find out, if Client {{ keycloak_client_id }} for service Keycloak exists"
+  uri:
+    url: "{{ keycloak_base_url }}/auth/admin/realms/{{keycloak_realm_name}}/clients/?clientId={{keycloak_client_id}}"
+    method: GET
+    status_code:
+     - 200
+    headers:
+      Accept: "application/json"
+      Authorization: "Bearer {{ keycloak_token.json.access_token }}"
+  register: keycloak_client_exists
+
+- name: "Create SAML client {{ keycloak_client_id }} for service Keycloak"
+  when: keycloak_client_exists.json.0 is not defined
+  uri:
+    url: "{{ keycloak_base_url }}/auth/admin/realms/{{keycloak_realm_name}}/clients"
+    method: POST
+    body_format: json
+    body:
+      "access":
+          "configure": true
+          "manage": true
+          "view": true
+      "alwaysDisplayInConsole": false
+      "attributes":
+          "display.on.consent.screen": "false"
+          "exclude.session.state.from.auth.response": "false"
+          "saml.assertion.signature": "true"
+          "saml.authnstatement": "true"
+          "saml.client.signature": "false"
+          "saml.encrypt": "true"
+          "saml.force.post.binding": "true"
+          "saml.multivalued.roles": "false"
+          "saml.onetimeuse.condition": "false"
+          "saml.server.signature": "true"
+          "saml.server.signature.keyinfo.ext": "false"
+          "saml.signature.algorithm": "RSA_SHA256"
+#          "saml.signing.certificate": "{{saml_signing_certificate}}"
+#          "saml.signing.private.key": "{{saml_signing_private_key}}"
+          "saml_assertion_consumer_url_post": "https://{{tenant_domain}}:8443/_matrix/saml2/authn_response"
+          "saml_force_name_id_format": "false"
+          "saml_name_id_format": "username"
+          "saml_signature_canonicalization_method": "http://www.w3.org/2001/10/xml-exc-c14n#"
+          "tls.client.certificate.bound.access.tokens": "false"
+      "authenticationFlowBindingOverrides": {}
+      "authorizationServicesEnabled": ""
+      "bearerOnly": false
+      "clientAuthenticatorType": "client-secret"
+      "clientId": "{{keycloak_client_id}}"
+      "consentRequired": false
+      "defaultClientScopes": [
+          "web-origins",
+          "role_list",
+          "profile",
+          "roles",
+          "email"
+      ]
+      "directAccessGrantsEnabled": false
+      "enabled": true
+      "frontchannelLogout": true
+      "fullScopeAllowed": true
+      "implicitFlowEnabled": false
+      "nodeReRegistrationTimeout": -1
+      "notBefore": 0
+      "optionalClientScopes": [
+          "address",
+          "phone",
+          "offline_access",
+          "microprofile-jwt"
+      ]
+      "protocol": "saml"
+      "publicClient": false
+      "redirectUris": [
+          "https://{{tenant_domain}}:8443/_matrix/saml2/authn_response"
+      ]
+      "serviceAccountsEnabled": false
+      "standardFlowEnabled": true
+      "surrogateAuthRequired": false
+      "webOrigins": []
+    remote_src: "no"
+    status_code:
+     - 201
+    headers:
+      Content-type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ keycloak_token.json.access_token }}"
+  register: keycloak_realm_create
+
+- name: "Update SAML client {{ keycloak_client_id }} for service Keycloak"
+  when: keycloak_client_exists.json.0 is defined
+  uri:
+    url: "{{ keycloak_base_url }}/auth/admin/realms/{{keycloak_realm_name}}/clients/{{keycloak_client_exists.json.0.id}}"
+    method: PUT
+    body_format: json
+    body:
+      "access":
+          "configure": true
+          "manage": true
+          "view": true
+      "alwaysDisplayInConsole": false
+      "attributes":
+          "display.on.consent.screen": "false"
+          "exclude.session.state.from.auth.response": "false"
+          "saml.assertion.signature": "true"
+          "saml.authnstatement": "true"
+          "saml.client.signature": "false"
+          "saml.encrypt": "true"
+          "saml.force.post.binding": "true"
+          "saml.multivalued.roles": "false"
+          "saml.onetimeuse.condition": "false"
+          "saml.server.signature": "true"
+          "saml.server.signature.keyinfo.ext": "false"
+          "saml.signature.algorithm": "RSA_SHA256"
+#         "saml.signing.certificate": "{{saml_signing_certificate}}"
+#          "saml.signing.private.key": "{{saml_signing_private_key}}"
+          "saml_assertion_consumer_url_post": "https://{{tenant_domain}}:8443/_matrix/saml2/authn_response"
+          "saml_force_name_id_format": "false"
+          "saml_name_id_format": "username"
+          "saml_signature_canonicalization_method": "http://www.w3.org/2001/10/xml-exc-c14n#"
+          "tls.client.certificate.bound.access.tokens": "false"
+      "authenticationFlowBindingOverrides": {}
+      "authorizationServicesEnabled": ""
+      "bearerOnly": false
+      "clientAuthenticatorType": "client-secret"
+      "clientId": "{{keycloak_client_id}}"
+      "consentRequired": false
+      "defaultClientScopes": [
+          "web-origins",
+          "role_list",
+          "profile",
+          "roles",
+          "email"
+      ]
+      "directAccessGrantsEnabled": false
+      "enabled": true
+      "frontchannelLogout": true
+      "fullScopeAllowed": true
+#      "id": "e4aaca3d-9d5c-4e72-9c3d-aca4f9913576"
+      "implicitFlowEnabled": false
+      "nodeReRegistrationTimeout": -1
+      "notBefore": 0
+      "optionalClientScopes": [
+          "address",
+          "phone",
+          "offline_access",
+          "microprofile-jwt"
+      ]
+      "protocol": "saml"
+      "publicClient": false
+      "redirectUris": [
+          "https://{{tenant_domain}}:8443/_matrix/saml2/authn_response"
+      ]
+      "serviceAccountsEnabled": false
+      "standardFlowEnabled": true
+      "surrogateAuthRequired": false
+      "webOrigins": []
+    remote_src: "no"
+    status_code:
+     - 204
+    headers:
+      Content-type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ keycloak_token.json.access_token }}"
+
+- name: "Find out, if Client {{ keycloak_client_id }} for service Keycloak exists"
+  uri:
+    url: "{{ keycloak_base_url }}/auth/admin/realms/{{keycloak_realm_name}}/clients/?clientId={{keycloak_client_id}}"
+    method: GET
+    status_code:
+     - 200
+    headers:
+      Accept: "application/json"
+      Authorization: "Bearer {{ keycloak_token.json.access_token }}"
+  register: keycloak_client_exists
+
+#http://192.168.64.18:9000/auth/admin/realms/myrealm/clients/e4aaca3d-9d5c-4e72-9c3d-aca4f9913576/protocol-mappers/models
+#{"protocol":"saml","config":{"user.attribute":"Username","friendly.name":"uid","attribute.name":"uid","attribute.nameformat":"URI Reference"},"name":"uid","protocolMapper":"saml-user-property-mapper"}
+- name: "Add uid protocol mapping"
+  when: keycloak_client_exists.json.0 is defined
+  uri:
+    url: "{{ keycloak_base_url }}/auth/admin/realms/{{keycloak_realm_name}}/clients/{{keycloak_client_exists.json.0.id}}/protocol-mappers/models"
+    method: POST
+    body_format: json
+    body:
+      protocol: "saml"
+      name: "uid"
+      protocolMapper: "saml-user-property-mapper"
+      config: 
+        "user.attribute": "Username"
+        "friendly.name": "uid"
+        "attribute.name": "uid"
+        "attribute.nameformat": "URI Reference"
+    remote_src: "no"
+    status_code:
+     - 201
+     - 409
+    headers:
+      Content-type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ keycloak_token.json.access_token }}"
+
+#http://192.168.64.18:9000/auth/admin/realms/myrealm/clients/e4aaca3d-9d5c-4e72-9c3d-aca4f9913576/protocol-mappers/models
+#{"protocol":"saml","config":{"Script":"// Concat First and Last name of user when non-empty\nnames = [];\n      \nfirstName = user.getFirstName();\nif (firstName.length > 0) {\n    names.push(firstName);\n}\nlastName = user.getLastName();\nif (lastName.length > 0) {\n    names.push(lastName);\n}\n      \nexports = names.join(\" \");","single":"true","friendly.name":"displayName","attribute.name":"displayName","attribute.nameformat":"Basic"},"name":"displayName","protocolMapper":"saml-javascript-mapper"}
+- name: "Add displayName protocol mapping"
+  when: keycloak_client_exists.json.0 is defined
+  uri:
+    url: "{{ keycloak_base_url }}/auth/admin/realms/{{keycloak_realm_name}}/clients/{{keycloak_client_exists.json.0.id}}/protocol-mappers/models"
+    method: POST
+    body_format: json
+    body:
+      protocol: "saml"
+      name: "displayName"
+      protocolMapper: "saml-javascript-mapper"
+      config:
+        single: "true"
+        "friendly.name": "displayName"
+        "attribute.name": "displayName"
+        "attribute.nameformat": "Basic"
+        Script: "// Concat First and Last name of user when non-empty\nnames = [];\n      \nfirstName = user.getFirstName();\nif (firstName.length > 0) {\n    names.push(firstName);\n}\nlastName = user.getLastName();\nif (lastName.length > 0) {\n    names.push(lastName);\n}\n      \nexports = names.join(\" \");"
+    remote_src: "no"
+    status_code:
+     - 201
+     - 409
+    headers:
+      Content-type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ keycloak_token.json.access_token }}"
+
+- name: Import SAML keys certificate
+  uri:
+    url: "{{ keycloak_base_url }}/auth/admin/realms/{{keycloak_realm_name}}/clients/{{keycloak_client_exists.json.0.id}}/certificates/saml.encryption/upload"
+    method: POST
+    body_format: form-multipart
+    body:
+      keystoreFormat: PKCS12
+      keyAlias: matrix
+      username: "{{realm_user}}"
+      storePassword: "T8KsHvBFgAk"
+      keyPassword: undefined
+      file:
+        filename: "{{matrix_ssl_certificate_pfx}}"
+        mime_type: application/x-pkcs12
+    remote_src: "no"
+    status_code:
+     - 200
+    headers:
+      Content-type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ keycloak_token.json.access_token }}"
+
+- name: Fetch IDP config
+  get_url:
+    url: "{{ keycloak_base_url }}/auth/realms/{{keycloak_realm_name}}/protocol/saml/descriptor"
+    dest: "{{ matrix_synapse_config_dir_path }}/saml/idp.xml"
+    mode: 0644
