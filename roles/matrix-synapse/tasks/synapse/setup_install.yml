@@ -75,3 +75,13 @@
     src: "{{ matrix_synapse_template_synapse_log }}"
     dest: "{{ matrix_synapse_config_dir_path }}/log.config"
     mode: 0644
+
+- name: Ensure Synapse other files installed
+  copy:
+    src: "{{ item }}"
+    dest: "{{ matrix_synapse_config_dir_path }}/{{ item }}"
+    mode: 0644
+    owner: "{{ matrix_user_username }}"
+    group: "{{ matrix_user_groupname }}"
+  with_items:
+    - sso_redirect_confirm.html

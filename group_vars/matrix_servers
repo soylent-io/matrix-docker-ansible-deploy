@@ -886,6 +886,10 @@ matrix_riot_web_welcome_user_id: ~
 
 matrix_riot_web_jitsi_preferredDomain: "{{ matrix_server_fqn_jitsi if matrix_jitsi_enabled else '' }}"
 
+matrix_riot_web_brand: "Beehive Chat"
+matrix_riot_web_welcome_headline: "Welcome to Beehive Chat"
+matrix_riot_web_welcome_logo: "welcome/images/beehive_logo.svg"
+
 ######################################################################
 #
 # /matrix-riot-web

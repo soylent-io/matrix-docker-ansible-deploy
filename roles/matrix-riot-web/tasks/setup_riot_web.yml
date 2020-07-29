@@ -64,6 +64,19 @@
     - {src: "{{ matrix_riot_web_embedded_pages_home_path }}", name: "home.html"}
   when: "matrix_riot_web_enabled|bool and item.src is not none"
 
+- name: Ensure Matrix riot-web other files installed
+  copy:
+    src: "{{ item }}"
+    dest: "{{ matrix_riot_web_data_path }}/{{ item }}"
+    mode: 0644
+    owner: "{{ matrix_user_username }}"
+    group: "{{ matrix_user_groupname }}"
+  with_items:
+    - beehive_logo.svg
+    - beehive_favicon.png
+    - beehive_index.html
+  when: "matrix_riot_web_enabled|bool and item.src is not none"
+
 - name: Ensure Matrix riot-web config files removed
   file:
     path: "{{ matrix_riot_web_data_path }}/{{ item.name }}"
